@@ -1,0 +1,46 @@
+buildscript {
+    ext {
+        kotlin_version = '1.7.10'
+        compileSdkVersion = 33
+        targetSdkVersion = 33
+        minSdkVersion = 19
+        appCompatVersion = "1.4.2"
+        playServicesLocationVersion = "21.0.1"
+    }
+
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:7.3.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url "${project(':background_fetch').projectDir}/libs"
+        }
+        maven {
+            url "${project(':flutter_background_geolocation').projectDir}/libs"
+        }
+        maven { url 'https://developer.huawei.com/repo/' }
+    }
+}
+
+rootProject.buildDir = '../build'
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}
