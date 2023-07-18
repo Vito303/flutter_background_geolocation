@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_background_geolocation/flutter_background_geolocation.dart' as bg;
 
+import 'dart:convert';
+
+JsonEncoder encoder = new JsonEncoder.withIndent("     ");
+
 void main() {
   runApp(const MyApp());
 }
@@ -57,6 +61,9 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  late String _motionActivity = '';
+  late String _content = '';
+  late String _odometer = '';
 
   @override
   void initState() {
@@ -69,12 +76,26 @@ class _MyHomePageState extends State<MyHomePage> {
     // Fired whenever a location is recorded
     bg.BackgroundGeolocation.onLocation((bg.Location location) {
       print('[location] - $location');
+
+      String odometerKM = (location.odometer / 1000.0).toStringAsFixed(1);
+
+      setState(() {
+        _content = encoder.convert(location.toMap());
+        _odometer = odometerKM;
+      });
     });
 
     // Fired whenever the plugin changes motion-state (stationary->moving and vice-versa)
     bg.BackgroundGeolocation.onMotionChange((bg.Location location) {
       print('[motionchange] - $location');
     });
+
+    void _onActivityChange(bg.ActivityChangeEvent event) {
+      print('[activitychange] - $event');
+      setState(() {
+        _motionActivity = event.activity;
+      });
+    }
 
     // Fired whenever the state of location-services changes.  Always fired at boot
     bg.BackgroundGeolocation.onProviderChange((bg.ProviderChangeEvent event) {
@@ -152,21 +173,23 @@ class _MyHomePageState extends State<MyHomePage> {
           // wireframe for each widget.
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
+            SingleChildScrollView(child: Text('$_content')),
+            Text('$_motionActivity  $_odometer km'),
+            // const Text(
+            //   'You have pushed the button this many times:',
+            // ),
+            // Text(
+            //   '$_counter',
+            //   style: Theme.of(context).textTheme.headlineMedium,
+            // ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+      // floatingActionButton: FloatingActionButton(
+      //   onPressed: _incrementCounter,
+      //   tooltip: 'Increment',
+      //   child: const Icon(Icons.add),
+      // ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
