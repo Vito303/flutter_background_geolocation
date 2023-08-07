@@ -4,6 +4,8 @@ import 'package:flutter_background_geolocation/flutter_background_geolocation.da
 
 import 'dart:convert';
 
+import 'package:flutter_switch/flutter_switch.dart';
+
 JsonEncoder encoder = new JsonEncoder.withIndent("     ");
 
 void main() {
@@ -65,6 +67,9 @@ class _MyHomePageState extends State<MyHomePage> {
   late String _content = '';
   late String _odometer = '';
 
+  late String _eventMotionChange = '';
+  late String _eventLocation = "";
+
   @override
   void initState() {
     super.initState();
@@ -82,20 +87,27 @@ class _MyHomePageState extends State<MyHomePage> {
       setState(() {
         _content = encoder.convert(location.toMap());
         _odometer = odometerKM;
+
+        _eventLocation = "[location] - $location";
       });
+    }, (bg.LocationError error) {
+      print('[onLocation] ERROR: ${error}');
     });
 
     // Fired whenever the plugin changes motion-state (stationary->moving and vice-versa)
     bg.BackgroundGeolocation.onMotionChange((bg.Location location) {
       print('[motionchange] - $location');
+      setState(() {
+        _eventMotionChange = "[motionchange] - $location";
+      });
     });
 
-    void _onActivityChange(bg.ActivityChangeEvent event) {
+    bg.BackgroundGeolocation.onActivityChange((bg.ActivityChangeEvent event) {
       print('[activitychange] - $event');
       setState(() {
         _motionActivity = event.activity;
       });
-    }
+    });
 
     // Fired whenever the state of location-services changes.  Always fired at boot
     bg.BackgroundGeolocation.onProviderChange((bg.ProviderChangeEvent event) {
@@ -107,7 +119,7 @@ class _MyHomePageState extends State<MyHomePage> {
     //
     bg.BackgroundGeolocation.ready(bg.Config(
         desiredAccuracy: bg.Config.DESIRED_ACCURACY_HIGH,
-        distanceFilter: 10.0,
+        distanceFilter: 1.0,
         stopOnTerminate: false,
         startOnBoot: true,
         debug: true,
@@ -117,24 +129,13 @@ class _MyHomePageState extends State<MyHomePage> {
         ////
         // 3.  Start the plugin.
         //
-        bg.BackgroundGeolocation.start();
+        //bg.BackgroundGeolocation.start();
       }
     });
   }
 
-
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
+  bool status = false;
+  bool _enabled = false;
 
   @override
   Widget build(BuildContext context) {
@@ -157,39 +158,84 @@ class _MyHomePageState extends State<MyHomePage> {
       body: Center(
         // Center is a layout widget. It takes a single child and positions it
         // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            SingleChildScrollView(child: Text('$_content')),
-            Text('$_motionActivity  $_odometer km'),
-            // const Text(
-            //   'You have pushed the button this many times:',
-            // ),
-            // Text(
-            //   '$_counter',
-            //   style: Theme.of(context).textTheme.headlineMedium,
-            // ),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            // Column is also a layout widget. It takes a list of children and
+            // arranges them vertically. By default, it sizes itself to fit its
+            // children horizontally, and tries to be as tall as its parent.
+            //
+            // Column has various properties to control how it sizes itself and
+            // how it positions its children. Here we use mainAxisAlignment to
+            // center the children vertically; the main axis here is the vertical
+            // axis because Columns are vertical (the cross axis would be
+            // horizontal).
+            //
+            // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
+            // action in the IDE, or press "p" in the console), to see the
+            // wireframe for each widget.
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              const SizedBox(height: 10.0),
+              FlutterSwitch(
+                  value: status,
+                  showOnOff: true,
+                  onToggle: (val) {
+                    setState(() {
+                      status = val;
+                      if (status) {
+                        bg.BackgroundGeolocation.start().then((bg.State state) {
+                          print('[start] success $state');
+                          setState(() {
+                            _enabled = state.enabled;
+                          });
+                        });
+                      } else {
+                        bg.BackgroundGeolocation.stop().then((bg.State state) {
+                          print('[stop] success: $state');
+                          // Reset odometer.
+                          bg.BackgroundGeolocation.setOdometer(0.0);
+
+                          setState(() {
+                            _odometer = '0.0';
+                            _enabled = state.enabled;
+                          });
+                        });
+                      }
+                    });
+                  }),
+              // Text('_eventMotionChange: $_eventMotionChange'),
+              // Text('_eventLocation: $_eventLocation'),
+              Text('$_motionActivity  $_odometer km'),
+              Text('$_content'),
+            ],
+          ),
         ),
       ),
-      // floatingActionButton: FloatingActionButton(
-      //   onPressed: _incrementCounter,
-      //   tooltip: 'Increment',
-      //   child: const Icon(Icons.add),
-      // ), // This trailing comma makes auto-formatting nicer for build methods.
+      floatingActionButton: FloatingActionButton(
+        onPressed: _getLocation,
+        tooltip: 'GetLocation',
+        child: const Icon(Icons.add),
+      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
+  }
+
+  void _getLocation() {
+    bg.BackgroundGeolocation.getCurrentPosition(
+        timeout: 30,
+        // 30 second timeout to fetch location
+        maximumAge: 5000,
+        // Accept the last-known-location if not older than 5000 ms.
+        desiredAccuracy: 10,
+        // Try to fetch a location with an accuracy of `10` meters.
+        samples: 3,
+        // How many location samples to attempt.
+        extras: {
+          // [Optional] Attach your own custom meta-data to this location.  This meta-data will be persisted to SQLite and POSTed to your server
+          "foo": "bar"
+        }).then((bg.Location location) {
+      print('[getCurrentPosition] - $location');
+    }).catchError((error) {
+      print('[getCurrentPosition] ERROR: $error');
+    });
   }
 }
