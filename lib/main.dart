@@ -66,13 +66,109 @@ class _MyHomePageState extends State<MyHomePage> {
   late String _motionActivity = '';
   late String _content = '';
   late String _odometer = '';
+  late String _geofence = '';
 
   late String _eventMotionChange = '';
   late String _eventLocation = "";
 
+  Future<void> _showDialog(String title, String message) async {
+    await showDialog<void>(
+        context: context,
+        builder: (BuildContext context) {
+          return SimpleDialog( // <-- SEE HERE
+            title: Text(title),
+            children: <Widget>[
+              SimpleDialogOption(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: Text(message),
+              )
+            ],
+          );
+        });
+  }
+
+  void backgroundGeolocationHeadlessTask(bg.HeadlessEvent headlessEvent) async {
+    print('[BackgroundGeolocation] headless task $headlessEvent');
+    Map<String, dynamic> data = <String, dynamic>{};
+    data['message'] = '[providerchange] - $headlessEvent';
+    //debugLogToServer(data);
+  }
+
+  void bgStop() {
+    bg.BackgroundGeolocation.stop().then((bg.State state) {
+      print('[stop] success: $state');
+      // Reset odometer.
+      bg.BackgroundGeolocation.setOdometer(0.0);
+      _odometer = '0.0';
+    });
+  }
+
+  void _getLocation() {
+    bg.BackgroundGeolocation.getCurrentPosition(
+        timeout: 30,
+        // 30 second timeout to fetch location
+        maximumAge: 5000,
+        // Accept the last-known-location if not older than 5000 ms.
+        desiredAccuracy: 10,
+        // Try to fetch a location with an accuracy of `10` meters.
+        samples: 3,
+        // How many location samples to attempt.
+        extras: {
+          // [Optional] Attach your own custom meta-data to this location.  This meta-data will be persisted to SQLite and POSTed to your server
+          "foo": "bar"
+        }).then((bg.Location location) {
+      print('[getCurrentPosition] - $location');
+    }).catchError((error) {
+      print('[getCurrentPosition] ERROR: $error');
+    });
+  }
+
   @override
   void initState() {
     super.initState();
+
+    bg.BackgroundGeolocation.addGeofences([bg.Geofence(
+      identifier: "Home",
+      radius: 200,
+      latitude: 46.15832,
+      longitude: 13.7510517,
+      notifyOnEntry: true,
+    ), bg.Geofence(
+        identifier: "Work",
+        radius: 50,
+        latitude: 45.9683367,
+        longitude: 13.6394,
+        notifyOnEntry: true
+    )
+    ]).then((bool success) {
+      print('[addGeofences] success');
+    }).catchError((dynamic error) =>
+    {
+      print('[addGeofences] FAILURE: $error')
+    });
+
+    bg.BackgroundGeolocation.onGeofence((bg.GeofenceEvent event) {
+      print('[geofence] ${event.identifier}, ${event.action}');
+      //handleResponse( event.identifier + ' / ' +  event.action);
+      setState(() {
+        _geofence = "[geofence] ${event.identifier}, ${event.action}";
+        _showDialog('geofence', '${event.identifier}, ${event.action}');
+      });
+    });
+
+    bg.BackgroundGeolocation.onGeofencesChange((bg.GeofencesChangeEvent event) {
+      // Create map circles
+      event.on.forEach((bg.Geofence geofence) {
+        print(geofence);
+      });
+
+      // Remove map circles
+      event.off.forEach((String identifier) {
+        print(identifier);
+      });
+    });
 
     ////
     // 1.  Listen to events (See docs for all 12 available events).
@@ -120,8 +216,15 @@ class _MyHomePageState extends State<MyHomePage> {
     bg.BackgroundGeolocation.ready(bg.Config(
         desiredAccuracy: bg.Config.DESIRED_ACCURACY_HIGH,
         distanceFilter: 1.0,
-        stopOnTerminate: false,
+        stopOnTerminate: true,
         startOnBoot: true,
+        autoSync: false,
+        reset: true,  // <-- set true to ALWAYS apply supplied config; not just at first launch.
+        isMoving: true,
+        stopTimeout: 30000,
+        disableStopDetection: true,
+        geofenceProximityRadius: 200,
+        foregroundService: true,
         debug: true,
         logLevel: bg.Config.LOG_LEVEL_VERBOSE
     )).then((bg.State state) {
@@ -129,13 +232,14 @@ class _MyHomePageState extends State<MyHomePage> {
         ////
         // 3.  Start the plugin.
         //
-        //bg.BackgroundGeolocation.start();
+        bg.BackgroundGeolocation.start();
+
+        // engage geofences-only mode:
+        // bg.BackgroundGeolocation.startGeofences();
       }
     });
   }
 
-  bool status = false;
-  bool _enabled = false;
 
   @override
   Widget build(BuildContext context) {
@@ -176,33 +280,7 @@ class _MyHomePageState extends State<MyHomePage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               const SizedBox(height: 10.0),
-              FlutterSwitch(
-                  value: status,
-                  showOnOff: true,
-                  onToggle: (val) {
-                    setState(() {
-                      status = val;
-                      if (status) {
-                        bg.BackgroundGeolocation.start().then((bg.State state) {
-                          print('[start] success $state');
-                          setState(() {
-                            _enabled = state.enabled;
-                          });
-                        });
-                      } else {
-                        bg.BackgroundGeolocation.stop().then((bg.State state) {
-                          print('[stop] success: $state');
-                          // Reset odometer.
-                          bg.BackgroundGeolocation.setOdometer(0.0);
 
-                          setState(() {
-                            _odometer = '0.0';
-                            _enabled = state.enabled;
-                          });
-                        });
-                      }
-                    });
-                  }),
               // Text('_eventMotionChange: $_eventMotionChange'),
               // Text('_eventLocation: $_eventLocation'),
               Text('$_motionActivity  $_odometer km'),
@@ -217,25 +295,5 @@ class _MyHomePageState extends State<MyHomePage> {
         child: const Icon(Icons.add),
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
-  }
-
-  void _getLocation() {
-    bg.BackgroundGeolocation.getCurrentPosition(
-        timeout: 30,
-        // 30 second timeout to fetch location
-        maximumAge: 5000,
-        // Accept the last-known-location if not older than 5000 ms.
-        desiredAccuracy: 10,
-        // Try to fetch a location with an accuracy of `10` meters.
-        samples: 3,
-        // How many location samples to attempt.
-        extras: {
-          // [Optional] Attach your own custom meta-data to this location.  This meta-data will be persisted to SQLite and POSTed to your server
-          "foo": "bar"
-        }).then((bg.Location location) {
-      print('[getCurrentPosition] - $location');
-    }).catchError((error) {
-      print('[getCurrentPosition] ERROR: $error');
-    });
   }
 }
