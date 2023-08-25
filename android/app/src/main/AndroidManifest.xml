@@ -32,5 +32,8 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+<!--        &lt;!&ndash; flutter_background_geolocation licence &ndash;&gt;-->
+<!--        <meta-data android:name="com.transistorsoft.locationmanager.license" android:value="YOUR_LICENCE_KEY_HERE" />-->
     </application>
 </manifest>
